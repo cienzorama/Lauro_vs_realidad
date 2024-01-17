@@ -1,0 +1,944 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <link rel="icon" type="image/vnd.microsoft.icon" href="favicon.ico">
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+
+    <title>Lauro vs. Realidad</title>
+
+    <!-- Babylon.js -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/dat-gui/0.6.2/dat.gui.min.js"></script>
+    <script src="https://assets.babylonjs.com/generated/Assets.js"></script>
+    <script src="https://cdn.babylonjs.com/recast.js"></script>
+    <script src="https://cdn.babylonjs.com/ammo.js"></script>
+    <script src="https://cdn.babylonjs.com/havok/HavokPhysics_umd.js"></script>
+    <script src="https://cdn.babylonjs.com/cannon.js"></script>
+    <script src="https://cdn.babylonjs.com/Oimo.js"></script>
+    <script src="https://cdn.babylonjs.com/earcut.min.js"></script>
+    <script src="https://cdn.babylonjs.com/babylon.js"></script>
+    <script src="https://cdn.babylonjs.com/materialsLibrary/babylonjs.materials.min.js"></script>
+    <script src="https://cdn.babylonjs.com/proceduralTexturesLibrary/babylonjs.proceduralTextures.min.js"></script>
+    <script src="https://cdn.babylonjs.com/postProcessesLibrary/babylonjs.postProcess.min.js"></script>
+    <script src="https://cdn.babylonjs.com/loaders/babylonjs.loaders.js"></script>
+    <script src="https://cdn.babylonjs.com/serializers/babylonjs.serializers.min.js"></script>
+    <script src="https://cdn.babylonjs.com/gui/babylon.gui.min.js"></script>
+    <script src="https://cdn.babylonjs.com/inspector/babylon.inspector.bundle.js"></script>
+
+    <style>
+        html, body {
+            overflow: hidden;
+            width: 100%;
+            height: 100%;
+            margin: 0;
+            padding: 0;
+        }
+
+        #renderCanvas {
+            width: 100%;
+            height: 100%;
+            touch-action: none;
+        }
+    
+    </style>
+
+</head>
+
+<body>
+
+<!--<div id="canvasZone">-->
+    <canvas id="renderCanvas" style="z-index:1;"></canvas>
+<!--</div>-->
+
+<script>
+
+var canvas = document.getElementById("renderCanvas");
+
+var startRenderLoop = function (engine, canvas) {
+    engine.runRenderLoop(function () {
+        if (sceneToRender && sceneToRender.activeCamera) {
+            sceneToRender.render();
+        }
+    });
+}
+
+var engine = null;
+var scene = null;
+var sceneToRender = null;
+var createDefaultEngine = function() { return new BABYLON.Engine(canvas, true, { preserveDrawingBuffer: true, stencil: true,  disableWebGL2Support: false}); };
+
+//|-----------------------------------------------|
+//|   EL HORIZONTE Y OTRAS TONTUNAS DE "LAURO"    |
+//|                                               |
+//| v0.04     17/01/2024                          |
+//|                                               |
+//|             cienzorama@gmail.com              |
+//|-----------------------------------------------|
+
+//Constantes y valores
+dtor=Math.PI/180.0;
+zero=new BABYLON.Vector3(0,0,0);
+nan=new BABYLON.Vector3(NaN,NaN,NaN);
+r=10.0;
+earth_radius=6371.0;
+
+observer_lat=50.0;          //de -90 a 90º
+observer_lon=0.0;           //de -180º a 180º
+observer_h=10000;           //m
+observer_pos=zero.subtract(zero);
+observer_dir=[];
+observer_az=90;
+observer_alt=0;
+
+observer_lat*=dtor;
+observer_lon*=dtor;
+observer_h*=r/(earth_radius*1000.0);
+observer_az*=dtor;
+observer_alt*=dtor;
+
+circles_n_points=100;
+red_circle_data=[];
+green_circle_data=[];
+astro_hori_data=[];
+red_circle_alpha=1.0;
+
+red_circle_visible=1;
+green_circle_visible=1;
+green_sphere_visible=1;
+
+tube_size=0.01;
+TSG=0;
+
+function calcula() {
+
+    //Posición del observador
+    var cos_observer_lat=Math.cos(observer_lat);
+    var sin_observer_lat=Math.sin(observer_lat);
+    var cos_observer_lon=Math.cos(observer_lon);
+    var sin_observer_lon=Math.sin(observer_lon);
+
+    var xp=(r+observer_h)*cos_observer_lon*cos_observer_lat;
+    var zp=(r+observer_h)*sin_observer_lon*cos_observer_lat;
+    var yp=(r+observer_h)*sin_observer_lat;
+
+    observer_pos=new BABYLON.Vector3(xp,yp,zp);
+
+    //Radio y distancia al centro La Tierra
+    //del círculo tangente (círculo rojo - horizonte)
+    var ha=Math.acos(r/(r+observer_h));
+    var rcr=r*Math.sin(ha);
+    var rch=r*Math.cos(ha);
+
+    //Cacula una base en plano de corte entre
+    //el círculo del horizonte y la esfera
+    var aux1=new BABYLON.Vector3(0,1,0);
+    var observer_u=observer_pos.subtract(zero);
+    observer_u.normalize();
+
+    var au=BABYLON.Vector3.Cross(aux1,observer_u);
+    var av=BABYLON.Vector3.Cross(au,observer_u);
+    au.normalize();
+    av.normalize();
+
+    //Generación del círculo rojo (horizonte)
+    // y línea del horizonte astrónomico
+    for (var i=0;i<circles_n_points;i++) {
+
+        var ang=i*2*Math.PI/(circles_n_points-1);
+        var sin_ang=Math.sin(ang);
+        var cos_ang=Math.cos(ang);
+
+        red_circle_data[i]=new BABYLON.Vector3( observer_u.x*rch+rcr*(au.x*cos_ang+av.x*sin_ang),
+                                                observer_u.y*rch+rcr*(au.y*cos_ang+av.y*sin_ang),
+                                                observer_u.z*rch+rcr*(au.z*cos_ang+av.z*sin_ang)
+        )
+
+        astro_hori_data[i]=new BABYLON.Vector3( observer_pos.x+0.01*(au.x*cos_ang+av.x*sin_ang),
+                                                observer_pos.y+0.01*(au.y*cos_ang+av.y*sin_ang),
+                                                observer_pos.z+0.01*(au.z*cos_ang+av.z*sin_ang)
+        )
+    }
+
+    //Base de vectores en el plano local (este, norte, arriba)
+    eastV=new BABYLON.Vector3(-cos_observer_lat*sin_observer_lon,
+                               0,
+                               cos_observer_lat*cos_observer_lon);
+
+    northV=new BABYLON.Vector3(-sin_observer_lat*cos_observer_lon,
+                                cos_observer_lat,
+                               -sin_observer_lat*sin_observer_lon);
+
+    upV=observer_u.subtract(zero);
+    eastV.normalize();
+    northV.normalize();
+    upV.normalize();
+
+    //Dirección a la que mira el observador
+    //y dirección al centro de La Tierra
+    var obsRad=1;
+    var cos_az=Math.cos(observer_az);
+    var sin_az=Math.sin(observer_az);
+    var cos_alt=Math.cos(observer_alt);
+    var sin_alt=Math.sin(observer_alt);
+    var cos_alt_sin_az=cos_alt*sin_az;
+    var cos_alt_cos_az=cos_alt*cos_az;
+
+    var odx=observer_pos.x+obsRad*(eastV.x*cos_alt_sin_az+northV.x*cos_alt_cos_az+upV.x*sin_alt);
+    var ody=observer_pos.y+obsRad*(eastV.y*cos_alt_sin_az+northV.y*cos_alt_cos_az+upV.y*sin_alt);
+    var odz=observer_pos.z+obsRad*(eastV.z*cos_alt_sin_az+northV.z*cos_alt_cos_az+upV.z*sin_alt);
+
+    var obsDir=new BABYLON.Vector3(odx,ody,odz);
+
+    observer_dir=[observer_pos,obsDir,nan,zero,observer_pos];
+
+    //Punto de corte entre el horizonte y el azimut del observador
+    var cohx=observer_u.x*rch+rcr*(eastV.x*sin_az+northV.x*cos_az);
+    var cohy=observer_u.y*rch+rcr*(eastV.y*sin_az+northV.y*cos_az);
+    var cohz=observer_u.z*rch+rcr*(eastV.z*sin_az+northV.z*cos_az);
+
+    pcoh=new BABYLON.Vector3(cohx,cohy,cohz);
+
+    var dirposV=obsDir.subtract(observer_pos);
+    dirposV.normalize();
+    var pcohV=pcoh.subtract(zero);
+    pcohV.normalize();
+
+    var aux2=new BABYLON.Vector3.Cross(pcohV,dirposV);
+    aux2.normalize();
+
+    //Generación del círculo verde (ortodrómica)
+    for (var i=0;i<circles_n_points;i++) {
+
+        var ang=i*2*Math.PI/(circles_n_points-1);
+        var sin_ang=Math.sin(ang);
+        var cos_ang=Math.cos(ang);
+
+        green_circle_data[i]=new BABYLON.Vector3( r*(pcohV.x*cos_ang+aux2.x*sin_ang),
+                                                  r*(pcohV.y*cos_ang+aux2.y*sin_ang),
+                                                  r*(pcohV.z*cos_ang+aux2.z*sin_ang)
+        )
+    }
+}
+
+var createScene =  function () {
+
+    var scene = new BABYLON.Scene(engine);
+    scene.clearColor = new BABYLON.Color3(0.0, 0.0, 0.0);
+
+    //Cámara de vista externa
+    var camera = new BABYLON.ArcRotateCamera("Camera main", 0, 0, 10, zero, scene);
+    camera.setPosition(new BABYLON.Vector3(4*10, 0, 0));
+    camera.attachControl(canvas, true);
+    camera.radius=4*r;
+    camera.lowerRadiusLimit=0.5*r;
+    camera.upperRadiusLimit=16*r;
+    camera.minZ=0.0001;
+
+    //Solo se permite el uso del botón izquierdo del ratón
+    camera.inputs.attached.pointers.buttons = [0];
+
+    //Desactiva algunas funciones en pantallas táctiles
+    const input = camera.inputs.attached.pointers;
+	input.multiTouchPanAndZoom = false;
+	input.multiTouchPanning = false;
+
+    //Tamaño de la visualización extrena (mitad de la pantalla)
+    camera.viewport = new BABYLON.Viewport(0.0, 0.0, 0.5, 1.0);
+
+    //Cámara del observador
+    observer_camera=new BABYLON.UniversalCamera("observer_camera", 0, 0, 10, zero, scene);
+    
+    //Luz (...y a lo mejor no hace falta)
+    var light = new BABYLON.PointLight("omni", new BABYLON.Vector3(0, 2000, 0), scene);
+
+    //Material de La Tierra
+    var EarthMat = new BABYLON.StandardMaterial("earth", scene);
+    var url_em="images/2560px-Whole_world_-_land_and_oceans.jpg";
+    EarthMat.diffuseColor = new BABYLON.Color3(1, 1, 1);
+    EarthMat.backFaceCulling = true;
+    EarthMat.emissiveColor = new BABYLON.Color3(1,1,1);
+    EarthMat.diffuseTexture = new BABYLON.Texture(url_em, scene);
+    EarthMat.specularColor = new BABYLON.Color3(0,0,0);
+    EarthMat.diffuseTexture.uScale=-1;
+    EarthMat.diffuseTexture.vScale=-1;
+    EarthMat.useLogarithmicDepth = true;
+
+    //Esfera de La Tierra
+    EarthSphere = BABYLON.MeshBuilder.CreateSphere("EarthSpher", {segments:200, diameter:2*r}, scene);
+    EarthSphere.position=zero;
+    EarthSphere.isBlocker=true;
+    EarthSphere.material=EarthMat;
+
+    //Rotación sobre el eje Y (arriba) de La Tierra                   
+    EarthSphere.rotation=new BABYLON.Vector3(0, 0, 0);
+    EarthSphere.rotate(BABYLON.Axis.Y, Math.PI, BABYLON.Space.WORLD);
+    EarthSphere.rotate(BABYLON.Axis.X, 0.0, BABYLON.Space.WORLD);
+    EarthSphere.rotate(BABYLON.Axis.Z, 0.0, BABYLON.Space.WORLD);
+
+    //Rutica general de cálculo
+    calcula();
+
+    //Material del marcador de la posición del observador
+    var ObsMarkMat = new BABYLON.StandardMaterial("Sun", scene);
+    ObsMarkMat.diffuseColor = new BABYLON.Color3(1,1,0);
+    ObsMarkMat.emissiveColor = new BABYLON.Color3(1,1,0);
+    ObsMarkMat.specularColor = new BABYLON.Color3(0,0,0);
+    ObsMarkMat.backFaceCulling = true;
+    ObsMarkMat.useLogarithmicDepth = true;
+
+    //Marcador de la posición del observador
+    var ObsMarkSphere = BABYLON.MeshBuilder.CreateSphere("ObsMarkSphere", {segments:20, diameter:0.015*r}, scene);
+    ObsMarkSphere.material=ObsMarkMat;
+    ObsMarkSphere.position=observer_pos.subtract(zero);
+
+    //Material del marcador del corte entre horizonte y ortodromica (esfera verde)
+    var ObsMarkMat2 = new BABYLON.StandardMaterial("Sun", scene);
+    ObsMarkMat2.diffuseColor = new BABYLON.Color3(0,1,0);
+    ObsMarkMat2.emissiveColor = new BABYLON.Color3(0,1,0);
+    ObsMarkMat2.specularColor = new BABYLON.Color3(0,0,0);
+    ObsMarkMat2.backFaceCulling = true;
+    ObsMarkMat2.useLogarithmicDepth = true;
+
+    //Marcador del corte entre horizonte y ortodromica (esfera verde)
+    ObsMarkSphere2 = BABYLON.MeshBuilder.CreateSphere("ObsMarkSphere", {segments:20, diameter:0.006*r}, scene);
+    ObsMarkSphere2.material=ObsMarkMat2;
+    ObsMarkSphere2.position=pcoh.subtract(zero);
+    ObsMarkSphere2.isVisible=green_sphere_visible;
+
+    //Material del Círculo rojo (horizonte)
+    redCircleMat = new BABYLON.StandardMaterial("rsph", scene);
+    redCircleMat.specularColor = new BABYLON.Color3(0, 0, 0);
+    redCircleMat.diffuseColor=BABYLON.Color3.Red();
+    redCircleMat.emissiveColor = BABYLON.Color3.Red();
+    redCircleMat.alpha=red_circle_alpha;
+    redCircleMat.useLogarithmicDepth = true;
+
+    //Círculo rojo (horizonte)
+    redCircle = BABYLON.MeshBuilder.CreateTube(
+        "tube", {
+        path: red_circle_data, 
+        radius: tube_size,
+        sideOrientation: BABYLON.Mesh.DOUBLESIDE
+        }, 
+    scene);
+    redCircle.material=redCircleMat;
+    redCircle.isVisible=red_circle_visible;
+
+    //Material círculo verde (ortodrómica)
+    greenCircleMat = new BABYLON.StandardMaterial("rsph", scene);
+    greenCircleMat.specularColor = new BABYLON.Color3(0, 0, 0);
+    greenCircleMat.diffuseColor=BABYLON.Color3.Green();
+    greenCircleMat.emissiveColor = BABYLON.Color3.Green();
+    greenCircleMat.alpha=1;
+    greenCircleMat.useLogarithmicDepth = true;
+
+    //Círculo verde (ortodrómica)
+    greenCircle = BABYLON.MeshBuilder.CreateTube(
+        "tube", {
+        path: green_circle_data, 
+        radius: tube_size*1.2,
+        sideOrientation: BABYLON.Mesh.DOUBLESIDE
+        }, 
+    scene);
+    greenCircle.material=greenCircleMat;
+    greenCircle.isVisible=green_circle_visible;
+
+    //Material de la esfera celeste (mapa del cielo)
+    sky_material = new BABYLON.StandardMaterial("sky_sphere_material", scene);
+    sky_material.backFaceCulling = false;
+    sky_material.disableLighting = true;
+    sky_material.diffuseTexture = new BABYLON.Texture("images/starmap_4k_2.jpg", scene);
+    sky_material.emissiveColor = new BABYLON.Color3(1, 1, 1);
+    sky_material.diffuseTexture.uScale=1;
+    sky_material.diffuseTexture.vScale=-1;
+    
+    //Esfera celeste
+    sky_sphere = BABYLON.MeshBuilder.CreateSphere("sky_sphere", {segments:32, diameter:1000000}, scene);				
+    sky_sphere.material = sky_material;
+
+    //Rotación sobre el eje Y (arriba) del mapa del cielo                
+    sky_sphere.rotation=new BABYLON.Vector3(0, 0, 0);
+    sky_sphere.rotate(BABYLON.Axis.Y, TSG, BABYLON.Space.WORLD);
+    sky_sphere.rotate(BABYLON.Axis.X, 0.0, BABYLON.Space.WORLD);
+    sky_sphere.rotate(BABYLON.Axis.Z, 0.0, BABYLON.Space.WORLD);
+
+    //Material de la Línea de dirección de observación
+    obsDirMat = new BABYLON.StandardMaterial("rsph", scene);
+    obsDirMat.specularColor = new BABYLON.Color3(0, 0, 0);
+    obsDirMat.diffuseColor=BABYLON.Color3.White();
+    obsDirMat.emissiveColor = BABYLON.Color3.White();
+    obsDirMat.alpha=1;
+    obsDirMat.useLogarithmicDepth = true;
+
+    //Línea de dirección de observación
+    obsDirLine =BABYLON.MeshBuilder.CreateLines ( "obsDirLine", {points: observer_dir},scene,true); 
+    obsDirLine.material=obsDirMat;
+    obsDirLine.layerMask=0x00000001;
+
+    //Línea del horizonte astronómico
+    astroHoriLine =BABYLON.MeshBuilder.CreateLines ( "astroHoriLine", {points: astro_hori_data},scene,true); 
+    astroHoriLine.material=obsDirMat;
+
+    camera.target=observer_pos.subtract(zero);
+    
+    //Opciones de la cámara del observador
+    observer_camera.position=observer_pos.subtract(zero);
+    observer_camera.fov=90*dtor;
+    observer_camera.upVector=(observer_pos.subtract(zero)).normalize();
+    observer_camera.viewport = new BABYLON.Viewport(0.5, 0.0, 0.5, 1.0);
+    observer_camera.target=pcoh.subtract(zero);
+    observer_camera.speed=0.1;
+    observer_camera.minZ=0.0001;
+
+    scene.activeCameras.push(observer_camera);
+    scene.activeCameras.push(camera);
+
+    //Máscara de las cámaras
+    camera.layerMask=0x00000001;
+    observer_camera.layerMask=0x00000010;
+
+    redibuja();
+
+    function actualiza_texto() {
+        data_text_v.text="Altura+  \n"+
+                         "Altura   "+(observer_h/10*earth_radius).toFixed(1).padStart(6,"0") +"km\n"+
+                         "Latitud  "+(observer_lat/dtor).toFixed(1) +"º\n"+
+                         "Longitud "+(observer_lon/dtor).toFixed(1) +"º\n"+
+                         "FOV      "+(observer_camera.fov/dtor).toFixed(1).padStart(5,0) +"º\n"+
+                         "O     "+"| EL "+(observer_alt/dtor).toFixed(1)+"\n"+
+                         "L     "+"| AZ "+(observer_az/dtor).toFixed(1)+"\n"+
+                         "TSG";
+    }
+
+    //-----GUI (INTERFAZ DE USUARIO) ------
+    var advancedTexture_L = BABYLON.GUI.AdvancedDynamicTexture.CreateFullscreenUI("UI");
+	var advancedTexture_R = BABYLON.GUI.AdvancedDynamicTexture.CreateFullscreenUI("UI");
+
+    //advancedTexture_L.uScale=0.5;
+
+    advancedTexture_L.layer.layerMask=camera.layerMask;
+    advancedTexture_R.layer.layerMask=observer_camera.layerMask;
+
+    var al_left=BABYLON.GUI.Control.HORIZONTAL_ALIGNMENT_LEFT;
+    var al_top=BABYLON.GUI.Control.VERTICAL_ALIGNMENT_TOP;
+
+    //Panel Superior
+    var panelI = new BABYLON.GUI.Rectangle();
+    panelI.width = "700px";
+    panelI.height = "150px";
+    panelI.cornerRadius = 10;
+    panelI.color = "black";
+    panelI.thickness = 4;
+    panelI.background = "black";
+    panelI.top="0%";
+    panelI.left="0px";
+    panelI.horizontalAlignment = al_left;
+    panelI.verticalAlignment = al_top;
+    panelI.alpha=0.5;
+    panelI.isVisible=1;		
+    advancedTexture_L.addControl(panelI);
+
+    //Textos
+    data_text_v = new BABYLON.GUI.TextBlock();
+    actualiza_texto();
+    data_text_v.color = "white";
+    data_text_v.fontSize = 14;
+    data_text_v.top="-9px";
+    data_text_v.left="450px";
+    data_text_v.height="150px";
+    data_text_v.width="140px";
+    data_text_v.horizontalAlignment = al_left;
+    data_text_v.verticalAlignment  = al_top;
+    data_text_v.textHorizontalAlignment = al_left;		
+    data_text_v.fontFamily = 'monospace';
+    data_text_v.scaleX=2;
+    panelI.addControl(data_text_v);
+
+    //Control de la altura
+    h_slider = new BABYLON.GUI.Slider();
+    h_slider.minimum = 0.1;
+    h_slider.maximum = 1000;
+    h_slider.value = observer_h/r*earth_radius;
+    h_slider.step=1;
+    h_slider.height = "11px";
+    h_slider.width = "350px";
+    h_slider.top=10-5;
+    h_slider.left=10;
+    h_slider.background = "gray";
+    h_slider.color="gray";
+    h_slider.horizontalAlignment = al_left;
+    h_slider.verticalAlignment = al_top;			
+    h_slider.onValueChangedObservable.add(function(value) {
+        observer_h = (h_slider.value+h_slider2.value)*r/earth_radius; 
+        calcula();
+        redibuja();
+        actualiza_texto();
+    });
+    panelI.addControl(h_slider);
+
+    //Control de la altura (ajuste fino)
+    h_slider2 = new BABYLON.GUI.Slider();
+    h_slider2.minimum = 0;
+    h_slider2.maximum = 10;
+    h_slider2.value = 0;
+    h_slider2.step=0.01;
+    h_slider2.height = "11px";
+    h_slider2.width = "350px";
+    h_slider2.top=27-7;
+    h_slider2.left=10;
+    h_slider2.background = "gray";
+    h_slider2.color="gray";
+    h_slider2.horizontalAlignment = al_left;
+    h_slider2.verticalAlignment = al_top;			
+    h_slider2.onValueChangedObservable.add(function(value) {
+        observer_h = (h_slider.value+h_slider2.value)*r/earth_radius; 
+        calcula();
+        redibuja();
+        actualiza_texto();
+    });
+    panelI.addControl(h_slider2);
+
+    //Control de la latitud
+    lat_slider = new BABYLON.GUI.Slider();
+    lat_slider.minimum = -90;
+    lat_slider.maximum = 90;
+    lat_slider.value = observer_lat/dtor;
+    lat_slider.step=1;
+    lat_slider.height = "11px";
+    lat_slider.width = "350px";
+    lat_slider.top=45-9;
+    lat_slider.left=10;
+    lat_slider.background = "gray";
+    lat_slider.color="gray";
+    lat_slider.horizontalAlignment = al_left;
+    lat_slider.verticalAlignment = al_top;			
+    lat_slider.onValueChangedObservable.add(function(value) {
+        observer_lat = lat_slider.value*dtor; 
+        calcula();
+        redibuja();
+        actualiza_texto();
+    });
+    panelI.addControl(lat_slider);
+
+    //Control de la longitud
+    lon_slider = new BABYLON.GUI.Slider();
+    lon_slider.minimum = -180;
+    lon_slider.maximum = 180;
+    lon_slider.value = observer_lon/dtor;
+    lon_slider.step=1;
+    lon_slider.height = "11px";
+    lon_slider.width = "350px";
+    lon_slider.top=61-9;
+    lon_slider.left=10;
+    lon_slider.background = "gray";
+    lon_slider.color="gray";
+    lon_slider.horizontalAlignment = al_left;
+    lon_slider.verticalAlignment = al_top;			
+    lon_slider.onValueChangedObservable.add(function(value) {
+        observer_lon = lon_slider.value*dtor; 
+        calcula();
+        redibuja();
+        actualiza_texto();
+    });
+    panelI.addControl(lon_slider);
+
+    //Control del campo de visión
+    fov_slider = new BABYLON.GUI.Slider();
+    fov_slider.minimum = 1;
+    fov_slider.maximum = 150;
+    fov_slider.value = observer_camera.fov/dtor;
+    fov_slider.step=1;
+    fov_slider.height = "11px";
+    fov_slider.width = "350px";
+    fov_slider.top=77-9;
+    fov_slider.left=10;
+    fov_slider.background = "gray";
+    fov_slider.color="gray";
+    fov_slider.horizontalAlignment = al_left;
+    fov_slider.verticalAlignment = al_top;			
+    fov_slider.onValueChangedObservable.add(function(value) {
+        observer_camera.fov = fov_slider.value*dtor; 
+        calcula();
+        redibuja();
+        actualiza_texto();
+    });
+    panelI.addControl(fov_slider);
+
+    //Ransparecia del círculo rojo
+    trans_slider = new BABYLON.GUI.Slider();
+    trans_slider.minimum = 0;
+    trans_slider.maximum = 1;
+    trans_slider.value = observer_camera.fov/dtor;
+    trans_slider.step=0.01;
+    trans_slider.height = "11px";
+    trans_slider.width = "350px";
+    trans_slider.top=93-9;
+    trans_slider.left=10;
+    trans_slider.background = "gray";
+    trans_slider.color="gray";
+    trans_slider.horizontalAlignment = al_left;
+    trans_slider.verticalAlignment = al_top;			
+    trans_slider.onValueChangedObservable.add(function(value) {
+        redCircleMat.alpha = trans_slider.value; 
+        redibuja();
+        actualiza_texto();
+    });
+    panelI.addControl(trans_slider);
+
+    //Grosor de los círculos rojo y verde
+    lsize_slider = new BABYLON.GUI.Slider();
+    lsize_slider.minimum = tube_size;
+    lsize_slider.maximum = tube_size*3;
+    lsize_slider.value = tube_size;
+    lsize_slider.step=tube_size*0.1;
+    lsize_slider.height = "11px";
+    lsize_slider.width = "350px";
+    lsize_slider.top=110-9;
+    lsize_slider.left=10;
+    lsize_slider.background = "gray";
+    lsize_slider.color="gray";
+    lsize_slider.horizontalAlignment = al_left;
+    lsize_slider.verticalAlignment = al_top;			
+    lsize_slider.onValueChangedObservable.add(function(value) {
+        tube_size = lsize_slider.value; 
+        redibuja();
+        actualiza_texto();
+    });
+    panelI.addControl(lsize_slider);
+
+    //Rotación del mapa de estrellas
+    tsg_slider = new BABYLON.GUI.Slider();
+    tsg_slider.minimum = 0;
+    tsg_slider.maximum = 360;
+    tsg_slider.value = TSG;
+    tsg_slider.step=1;
+    tsg_slider.height = "11px";
+    tsg_slider.width = "350px";
+    tsg_slider.top=128-9;
+    tsg_slider.left=10;
+    tsg_slider.background = "gray";
+    tsg_slider.color="gray";
+    tsg_slider.horizontalAlignment = al_left;
+    tsg_slider.verticalAlignment = al_top;			
+    tsg_slider.onValueChangedObservable.add(function(value) {
+
+        //Rotación sobre el eje Y (arriba) del mapa del cielo                
+        sky_sphere.rotation=new BABYLON.Vector3(0, 0, 0);
+        sky_sphere.rotate(BABYLON.Axis.Y, tsg_slider.value*dtor, BABYLON.Space.WORLD);
+        sky_sphere.rotate(BABYLON.Axis.X, 0.0, BABYLON.Space.WORLD);
+        sky_sphere.rotate(BABYLON.Axis.Z, 0.0, BABYLON.Space.WORLD);
+    
+        redibuja();
+        actualiza_texto();
+    });
+    panelI.addControl(tsg_slider);
+
+    //Botón lateral de apertura y cierre
+    //del panel de control
+    panel_abierto=1;
+    var oc_btn=BABYLON.GUI.Button.CreateSimpleButton("tab1","||");
+    oc_btn.width="30px";
+    oc_btn.height="140px";
+    oc_btn.fontSize = 14;
+    oc_btn.thickness=1;
+    oc_btn.cornerRadius=4;
+    oc_btn.color="white";
+    oc_btn.background="red";
+    oc_btn.top="0px";
+    oc_btn.left="660px";
+    oc_btn.horizontalAlignment = al_left;
+    oc_btn.verticalAlignment  = al_top;
+    oc_btn.textHorizontalAlignment = al_left;		
+    oc_btn.fontFamily = 'monospace';
+    oc_btn.alpha=0.35;
+    oc_btn.onPointerClickObservable.add (function() {
+
+        if (panel_abierto==1) {
+            panel_abierto=0;
+            panelI.left="-660px";
+            oc_btn.background="green";
+        } else {
+            panel_abierto=1;
+            panelI.left="0px";
+            oc_btn.background="red";
+        }
+
+    });
+    panelI.addControl(oc_btn);
+
+    var rcv_btn=BABYLON.GUI.Button.CreateSimpleButton("tab1","CR");
+    rcv_btn.width="30px";
+    rcv_btn.height="20px";
+    rcv_btn.fontSize = 14;
+    rcv_btn.thickness=2;
+    rcv_btn.cornerRadius=4;
+    rcv_btn.color="red";
+    rcv_btn.background="red";
+    rcv_btn.top="120px";
+    rcv_btn.left="470px";
+    rcv_btn.horizontalAlignment = al_left;
+    rcv_btn.verticalAlignment  = al_top;
+    rcv_btn.textHorizontalAlignment = al_left;		
+    rcv_btn.fontFamily = 'monospace';
+    rcv_btn.scaleX=2;
+    rcv_btn.isEnable=false;
+    rcv_btn.onPointerClickObservable.add (function() {
+
+        if (red_circle_visible==1) {
+            red_circle_visible=0;
+            rcv_btn.background="black";
+        } else {
+            red_circle_visible=1;
+            rcv_btn.background="red";
+        }
+
+        redibuja();
+    });
+    panelI.addControl(rcv_btn);
+
+    var gcv_btn=BABYLON.GUI.Button.CreateSimpleButton("tab1","CV");
+    gcv_btn.width="30px";
+    gcv_btn.height="20px";
+    gcv_btn.fontSize = 14;
+    gcv_btn.thickness=2;
+    gcv_btn.cornerRadius=4;
+    gcv_btn.color="green";
+    gcv_btn.background="green";
+    gcv_btn.top="120px";
+    gcv_btn.left="530px";
+    gcv_btn.horizontalAlignment = al_left;
+    gcv_btn.verticalAlignment  = al_top;
+    gcv_btn.textHorizontalAlignment = al_left;		
+    gcv_btn.fontFamily = 'monospace';
+    gcv_btn.scaleX=2;
+    gcv_btn.isEnable=false;
+    gcv_btn.onPointerClickObservable.add (function() {
+
+        if (green_circle_visible==1) {
+            green_circle_visible=0;
+            gcv_btn.background="black";
+        } else {
+            green_circle_visible=1;
+            gcv_btn.background="green";
+        }
+
+        redibuja();
+    });
+    panelI.addControl(gcv_btn);
+
+    var gsv_btn=BABYLON.GUI.Button.CreateSimpleButton("tab1","EV");
+    gsv_btn.width="30px";
+    gsv_btn.height="20px";
+    gsv_btn.fontSize = 14;
+    gsv_btn.thickness=2;
+    gsv_btn.cornerRadius=4;
+    gsv_btn.color="green";
+    gsv_btn.background="green";
+    gsv_btn.top="120px";
+    gsv_btn.left="592px";
+    gsv_btn.horizontalAlignment = al_left;
+    gsv_btn.verticalAlignment  = al_top;
+    gsv_btn.textHorizontalAlignment = al_left;		
+    gsv_btn.fontFamily = 'monospace';
+    gsv_btn.scaleX=2;
+    gsv_btn.isEnable=false;
+    gsv_btn.onPointerClickObservable.add (function() {
+
+        if (green_sphere_visible==1) {
+            green_sphere_visible=0;
+            gsv_btn.background="black";
+        } else {
+            green_sphere_visible=1;
+            gsv_btn.background="green";
+        }
+
+        redibuja();
+    });
+    panelI.addControl(gsv_btn);
+
+    //----END GUI S
+
+    //Función principal de redibujo de los elementos principales
+    function redibuja() {
+
+        //redibujo de...
+
+        //Líneas de dirección y línea al centro de La Tierra
+        obsDirLine.dispose();
+        obsDirLine =BABYLON.MeshBuilder.CreateLines ( "obsDirLine", {points: observer_dir},scene,true); 
+        obsDirLine.material=obsDirMat;
+        obsDirLine.layerMask=0x00000001;
+
+        //Línea del horizonte astronómico
+        astroHoriLine.dispose();
+        astroHoriLine =BABYLON.MeshBuilder.CreateLines ( "astroHoriLine", {points: astro_hori_data},scene,true); 
+        astroHoriLine.material=obsDirMat;
+
+        //Círculo rojo (horizonte)
+        redCircle.dispose();
+        redCircle = BABYLON.MeshBuilder.CreateTube(
+            "tube", {
+            path: red_circle_data, 
+            radius: tube_size,
+            sideOrientation: BABYLON.Mesh.DOUBLESIDE
+            }, 
+        scene);
+        redCircle.material=redCircleMat;
+        redCircle.isVisible=red_circle_visible;
+
+        //Línea verde (ortodrómica)
+        greenCircle.dispose();
+        greenCircle = BABYLON.MeshBuilder.CreateTube(
+            "tube", {
+            path: green_circle_data, 
+            radius: tube_size,
+            sideOrientation: BABYLON.Mesh.DOUBLESIDE
+            }, 
+        scene);
+        greenCircle.material=greenCircleMat;
+        greenCircle.isVisible=green_circle_visible;
+
+        //Esfera de la posición del observador
+        ObsMarkSphere.dispose();
+        ObsMarkSphere = BABYLON.MeshBuilder.CreateSphere("ObsMarkSphere", {segments:20, diameter:0.015*r}, scene);
+        ObsMarkSphere.material=ObsMarkMat;
+        ObsMarkSphere.position=observer_pos.subtract(zero);
+
+        //Esfera verde o marca dela dirección de observación
+        ObsMarkSphere2.dispose();
+        ObsMarkSphere2 = BABYLON.MeshBuilder.CreateSphere("ObsMarkSphere", {segments:20, diameter:0.006*r}, scene);
+        ObsMarkSphere2.material=ObsMarkMat2;
+        ObsMarkSphere2.position=pcoh.subtract(zero);
+        ObsMarkSphere2.isVisible=green_sphere_visible;
+
+        //Atualización de la configuración de las cámaras
+        observer_camera.position=observer_pos.subtract(zero);
+        observer_camera.target=observer_dir[1].subtract(zero);
+        observer_camera.upVector=(observer_pos.subtract(zero)).normalize();
+        camera.target=observer_pos.subtract(zero);
+       
+
+    }
+
+    //Comrpobación de si el botón del ratón está pulsado
+    var mouseDown=0;
+    var escena_izquierda=1;
+    var escena_derecha=0;
+
+    //Obtiene la posición del ratón en la pantalla
+    var getScreenPosition = function () {
+        return [scene.pointerX,scene.pointerY]
+    }
+
+    //Control del movimiento del ratón dependiendo
+    //de la zona de la pantalla (Izquierda -> externa, Derecha -> observador)
+    scene.onPointerObservable.add((pointerInfo) => {
+
+        switch (pointerInfo.type) {
+
+            //Si se pulsa el botón del ratón
+            case BABYLON.PointerEventTypes.POINTERDOWN:
+
+                //Guarda la posición del ratón en la pantalla
+                sp=getScreenPosition();
+
+                //Si el botón se pulsa en la parte izquierda
+                //activa el control del ratón en la cámara externa
+                //(control automático)
+                if (scene.pointerX<screen.width/2.0) {
+                    camera.attachControl(canvas,true);
+                    observer_camera.detachControl(canvas);
+                    escena_izquierda=1;
+                    escena_derecha=0;
+
+                //Si se pulsa el botón en la parte derecha
+                //desaciva el control del ratón en la cámara externa    
+                } else {
+                    camera.detachControl(canvas);
+                    mouseDown=1.0;
+                    escena_izquierda=0;
+                    escena_derecha=1;
+                }
+
+                break;
+
+            //Control manual del movimiento en la cámara del observador
+            case BABYLON.PointerEventTypes.POINTERMOVE:
+
+                if (mouseDown==1.0) {
+
+                    cp=getScreenPosition();
+                    observer_az+=0.01*(cp[0]-sp[0]);
+                    observer_alt+=-0.01*(cp[1]-sp[1]);
+
+                    if (observer_alt<-0.999*Math.PI*0.5) observer_alt=-0.999*Math.PI*0.5;
+                    if (observer_alt>0.999*Math.PI*0.5) observer_alt=0.999*Math.PI*0.5;
+                    if (observer_az<0) observer_az+=2*Math.PI;
+                    if (observer_az>2*Math.PI) observer_az-=2*Math.PI;
+
+                    calcula();
+                    redibuja();
+                    actualiza_texto();
+                    sp=getScreenPosition();
+                }
+
+                break;
+
+            //Deja de pulsar el botón del ratón
+            case BABYLON.PointerEventTypes.POINTERUP:
+                mouseDown=0.0;
+            break;
+
+            //Control del FOV en la cámara del observador
+            //con la rueda del ratón
+            case BABYLON.PointerEventTypes.POINTERWHEEL:
+                if (escena_derecha==1) {
+                    if (pointerInfo.event.wheelDelta>0) {
+                        observer_camera.fov-=3*dtor;
+                    } else {
+                        observer_camera.fov+=3*dtor;
+                    }
+                }
+
+                if (observer_camera.fov<2*dtor) observer_camera.fov=2*dtor;
+                if (observer_camera.fov>150*dtor) observer_camera.fov=150*dtor;
+                fov_slider.value = observer_camera.fov/dtor;
+                redibuja();
+
+                break;    
+
+        }
+            
+    });
+
+    return scene;
+};
+
+//Configuración incial y todas esas mierdas
+window.initFunction = async function() {
+                    
+    var asyncEngineCreation = async function() {
+        try {
+            return createDefaultEngine();
+        } catch(e) {
+            console.log("the available createEngine function failed. Creating the default engine instead");
+            return createDefaultEngine();
+        }
+    }
+
+    window.engine = await asyncEngineCreation();
+    if (!engine) throw 'engine should not be null.';
+    startRenderLoop(engine, canvas);
+    window.scene = createScene();};
+    initFunction().then(() => {sceneToRender = scene  
+
+});
+
+
+// Cambio de tamaño de la ventana del navegador
+window.addEventListener("resize", function () {
+    engine.resize();
+});
+
+</script>
+</body>
+</html>
