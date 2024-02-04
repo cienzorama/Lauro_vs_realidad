@@ -281,10 +281,11 @@ var createScene =  function () {
     //Material de La Tierra
     var EarthMat = new BABYLON.StandardMaterial("earth", scene);
     var url_em="images/2560px-Whole_world_-_land_and_oceans.jpg";
+    var url_em="images/Whole_world_-_land_and_oceans.jpg";
     EarthMat.diffuseColor = new BABYLON.Color3(1, 1, 1);
     EarthMat.backFaceCulling = true;
     EarthMat.emissiveColor = new BABYLON.Color3(1,1,1);
-    EarthMat.diffuseTexture = new BABYLON.Texture(url_em, scene);
+    EarthMat.diffuseTexture = new BABYLON.Texture(url_em, scene); 
     EarthMat.specularColor = new BABYLON.Color3(0,0,0);
     EarthMat.diffuseTexture.uScale=-1;
     EarthMat.diffuseTexture.vScale=-1;
@@ -1035,15 +1036,20 @@ var createScene =  function () {
                     // hacerse usando la curva loxodrómica (pero no tengo ganas de implementarlo...))
                     if (pointerInfo.event.buttons==2) {
                         cp=getScreenPosition();
-                        var cdy=0.00255*(cp[1]-sp[1]);
+                        var cdy=-0.00255*(cp[1]-sp[1]);
+                        var cdx=0.00255*(cp[0]-sp[0]);
                         var cos_az=Math.cos(observer_az);
                         var sin_az=Math.sin(observer_az);
+                        var cos_az_pm=Math.cos(observer_az+Math.PI/2.0);
+                        var sin_az_pm=Math.sin(observer_az+Math.PI/2.0);
 
-                        observer_lat+=cdy*cos_az;
-                        observer_lon+=cdy*sin_az;
+                        observer_lat+=cdy*cos_az+cdx*cos_az_pm;
+                        observer_lon+=cdy*sin_az+cdx*sin_az_pm;
                         
                         if (observer_lat>0.999*Math.PI/2.0) observer_lat=0.999*Math.PI/2.0;
                         if (observer_lat<-0.999*Math.PI/2.0) observer_lat=-0.999*Math.PI/2.0;
+                        lat_slider.value=observer_lat/dtor;
+                        lon_slider.value=observer_lon/dtor;
 
                     }
 
