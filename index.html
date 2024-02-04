@@ -4,7 +4,7 @@
     <link rel="icon" type="image/vnd.microsoft.icon" href="favicon.ico">
     <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
 
-    <title>Lauro vs. Realidad</title>
+    <title>Lauro vs. Realidad v0.06h</title>
 
     <!-- Babylon.js -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/dat-gui/0.6.2/dat.gui.min.js"></script>
@@ -69,7 +69,12 @@ var createDefaultEngine = function() { return new BABYLON.Engine(canvas, true, {
 //|-----------------------------------------------|
 //|   EL HORIZONTE Y OTRAS TONTUNAS DE "LAURO"    |
 //|                                               |
-//| v0.04     17/01/2024                          |
+//|   v0.06h      04/02/2024                      |
+//|                                               |
+//|          --AÑADIDO RECIENTEMENTE--            |
+//|   + Fondo de estrellas y constelaciones       |
+//|   + Cono tangente y cono de visión            |
+//|   + Control directo de altura y posición      |
 //|                                               |
 //|             cienzorama@gmail.com              |
 //|-----------------------------------------------|
@@ -108,6 +113,7 @@ coneTangentVisible=1;
 cone_vision_data=[];
 cone_vision_rad=1.0;
 coneVisionVisible=1;
+coneTransparency=0.25;
 
 red_circle_visible=1;
 green_circle_visible=1;
@@ -166,10 +172,11 @@ function calcula() {
         )
     }
 
-
+    //Dirección del Cono tangente
     cone_tangent_data=[observer_pos, observer_u.multiplyByFloats(rch,rch,rch)];
-    cone_tangent_rad=rcr*1.01;
 
+    //Radio de la base del cono tangente
+    cone_tangent_rad=rcr*1.01;
 
     //Base de vectores en el plano local (este, norte, arriba)
     eastV=new BABYLON.Vector3(-cos_observer_lat*sin_observer_lon,
@@ -234,9 +241,7 @@ function calcula() {
 
     //Cono de visión
     var obsDirNorm=obsDir.subtract(observer_pos);
-    //obsDirNorm.normalize();
     var dpcoh=BABYLON.Vector3.Distance(pcoh,observer_pos);
-
     cone_vision_data=[observer_pos,obsDirNorm.multiplyByFloats(dpcoh,dpcoh,dpcoh).add(observer_pos)]
     cone_vision_rad=dpcoh;
 
@@ -406,7 +411,7 @@ var createScene =  function () {
     coneTangentMat.specularColor = new BABYLON.Color3(0, 0, 0);
     coneTangentMat.diffuseColor=BABYLON.Color3.White();
     coneTangentMat.emissiveColor = BABYLON.Color3.White();
-    coneTangentMat.alpha=0.25;
+    coneTangentMat.alpha=coneTransparency;
     coneTangentMat.useLogarithmicDepth = true;
 
     //Cono tangente a la esfera
@@ -444,13 +449,12 @@ var createScene =  function () {
     camera.layerMask=0x00000001;
     observer_camera.layerMask=0x00000010;
 
-
     //Material del cono de visión
     coneVisionMat = new BABYLON.StandardMaterial("rsph", scene);
     coneVisionMat.specularColor = new BABYLON.Color3(0, 0, 0);
     coneVisionMat.diffuseColor=BABYLON.Color3.Yellow();
     coneVisionMat.emissiveColor = BABYLON.Color3.Yellow();
-    coneVisionMat.alpha=0.25;
+    coneVisionMat.alpha=coneTransparency;
     coneVisionMat.useLogarithmicDepth = true;
 
     conc=0.5;
@@ -474,6 +478,10 @@ var createScene =  function () {
 
     redibuja();
 
+
+    //-----GUI (INTERFAZ DE USUARIO) ------
+
+    //Función general de actualización de los textos del GUI
     function actualiza_texto() {
         data_text_v.text="Altura+  \n"+
                          "Altura   "+(observer_h/10*earth_radius).toFixed(1).padStart(6,"0") +"km\n"+
@@ -482,10 +490,10 @@ var createScene =  function () {
                          "FOV      "+(observer_camera.fov/dtor).toFixed(1).padStart(5,0) +"º\n"+
                          "O     "+"| EL "+(observer_alt/dtor).toFixed(1)+"\n"+
                          "L     "+"| AZ "+(observer_az/dtor).toFixed(1)+"\n"+
-                         "TSG";
+                         "TSG\n"+
+                         "TR";
     }
 
-    //-----GUI (INTERFAZ DE USUARIO) ------
     var advancedTexture_L = BABYLON.GUI.AdvancedDynamicTexture.CreateFullscreenUI("UI");
 	var advancedTexture_R = BABYLON.GUI.AdvancedDynamicTexture.CreateFullscreenUI("UI");
 
@@ -500,7 +508,7 @@ var createScene =  function () {
     //Panel Superior
     var panelI = new BABYLON.GUI.Rectangle();
     panelI.width = "700px";
-    panelI.height = "150px";
+    panelI.height = "160px";
     panelI.cornerRadius = 10;
     panelI.color = "black";
     panelI.thickness = 4;
@@ -518,7 +526,7 @@ var createScene =  function () {
     actualiza_texto();
     data_text_v.color = "white";
     data_text_v.fontSize = 14;
-    data_text_v.top="-9px";
+    data_text_v.top="0px";
     data_text_v.left="450px";
     data_text_v.height="150px";
     data_text_v.width="140px";
@@ -708,13 +716,39 @@ var createScene =  function () {
     });
     panelI.addControl(tsg_slider);
 
+    //Transparencia de los conos tangente y de visión
+    ct_slider = new BABYLON.GUI.Slider();
+    ct_slider.minimum = 0;
+    ct_slider.maximum = 1.0;
+    ct_slider.value = coneTransparency;
+    ct_slider.step=0.05;
+    ct_slider.height = "11px";
+    ct_slider.width = "350px";
+    ct_slider.top=128-9+18;
+    ct_slider.left=10;
+    ct_slider.background = "gray";
+    ct_slider.color="gray";
+    ct_slider.horizontalAlignment = al_left;
+    ct_slider.verticalAlignment = al_top;			
+    ct_slider.onValueChangedObservable.add(function(value) {
+
+        coneTransparency=value*1.0;;
+        coneTangentMat.alpha=coneTransparency*1.0;
+        coneVisionMat.alpha=coneTransparency*1.0;
+    
+        redibuja();
+        actualiza_texto();
+    });
+    panelI.addControl(ct_slider);
+
+
     //Botón lateral de apertura y cierre
     //del panel de control
     panel_abierto=1;
-    var oc_btn=BABYLON.GUI.Button.CreateSimpleButton("tab1","||");
+    var oc_btn=BABYLON.GUI.Button.CreateSimpleButton("tab1","<");
     oc_btn.width="30px";
-    oc_btn.height="140px";
-    oc_btn.fontSize = 14;
+    oc_btn.height="150px";
+    oc_btn.fontSize = 30;
     oc_btn.thickness=1;
     oc_btn.cornerRadius=4;
     oc_btn.color="white";
@@ -732,10 +766,12 @@ var createScene =  function () {
             panel_abierto=0;
             panelI.left="-660px";
             oc_btn.background="green";
+            oc_btn.textBlock.text=">";
         } else {
             panel_abierto=1;
             panelI.left="0px";
             oc_btn.background="red";
+            oc_btn.textBlock.text="<";
         }
 
     });
@@ -749,7 +785,7 @@ var createScene =  function () {
     rcv_btn.cornerRadius=4;
     rcv_btn.color="red";
     rcv_btn.background="red";
-    rcv_btn.top="120px";
+    rcv_btn.top="125px";
     rcv_btn.left="470px";
     rcv_btn.horizontalAlignment = al_left;
     rcv_btn.verticalAlignment  = al_top;
@@ -779,7 +815,7 @@ var createScene =  function () {
     gcv_btn.cornerRadius=4;
     gcv_btn.color="green";
     gcv_btn.background="green";
-    gcv_btn.top="120px";
+    gcv_btn.top="125px";
     gcv_btn.left="530px";
     gcv_btn.horizontalAlignment = al_left;
     gcv_btn.verticalAlignment  = al_top;
@@ -809,7 +845,7 @@ var createScene =  function () {
     gsv_btn.cornerRadius=4;
     gsv_btn.color="green";
     gsv_btn.background="green";
-    gsv_btn.top="120px";
+    gsv_btn.top="125px";
     gsv_btn.left="592px";
     gsv_btn.horizontalAlignment = al_left;
     gsv_btn.verticalAlignment  = al_top;
@@ -981,14 +1017,49 @@ var createScene =  function () {
 
                 if (mouseDown==1.0) {
 
-                    cp=getScreenPosition();
-                    observer_az+=0.01*(cp[0]-sp[0]);
-                    observer_alt+=-0.01*(cp[1]-sp[1]);
+                    //Cambio de orientación de la cámara
+                    if (pointerInfo.event.buttons==1) {
+                        cp=getScreenPosition();
+                        observer_az+=0.01*(cp[0]-sp[0]);
+                        observer_alt+=-0.01*(cp[1]-sp[1]);
 
-                    if (observer_alt<-0.999*Math.PI*0.5) observer_alt=-0.999*Math.PI*0.5;
-                    if (observer_alt>0.999*Math.PI*0.5) observer_alt=0.999*Math.PI*0.5;
-                    if (observer_az<0) observer_az+=2*Math.PI;
-                    if (observer_az>2*Math.PI) observer_az-=2*Math.PI;
+                        if (observer_alt<-0.999*Math.PI*0.5) observer_alt=-0.999*Math.PI*0.5;
+                        if (observer_alt>0.999*Math.PI*0.5) observer_alt=0.999*Math.PI*0.5;
+                        if (observer_az<0) observer_az+=2*Math.PI;
+                        if (observer_az>2*Math.PI) observer_az-=2*Math.PI;
+                    }
+
+                    //Movimiento en la dirección (aproximada) de observación
+                    //(El movimiento es aproximado porque realiza pequeños saltos
+                    // en la dirección de observación, el cálculo exacto debería
+                    // hacerse usando la curva loxodrómica (pero no tengo ganas de implementarlo...))
+                    if (pointerInfo.event.buttons==2) {
+                        cp=getScreenPosition();
+                        var cdy=0.00255*(cp[1]-sp[1]);
+                        var cos_az=Math.cos(observer_az);
+                        var sin_az=Math.sin(observer_az);
+
+                        observer_lat+=cdy*cos_az;
+                        observer_lon+=cdy*sin_az;
+                        
+                        if (observer_lat>0.999*Math.PI/2.0) observer_lat=0.999*Math.PI/2.0;
+                        if (observer_lat<-0.999*Math.PI/2.0) observer_lat=-0.999*Math.PI/2.0;
+
+                    }
+
+                    //Cambio de altura de la cámara del observador
+                    if (pointerInfo.event.buttons==4) {
+                        cp=getScreenPosition();
+                        var cdy=0.00125*(cp[1]-sp[1]);
+                        observer_h+=cdy;
+
+                        if (observer_h<r/earth_radius*0.1) observer_h=r/earth_radius*0.1;
+                        if (observer_h>r/earth_radius*1000) observer_h=r/earth_radius*1000;
+
+                        h_slider.value = observer_h/r*earth_radius;
+                        h_slider2.value = 0.01;
+                        
+                    }
 
                     calcula();
                     redibuja();
