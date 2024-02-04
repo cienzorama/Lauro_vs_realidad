@@ -101,6 +101,14 @@ green_circle_data=[];
 astro_hori_data=[];
 red_circle_alpha=1.0;
 
+cone_tangent_data=[];
+cone_tangent_rad=1.0;
+coneTangentVisible=1;
+
+cone_vision_data=[];
+cone_vision_rad=1.0;
+coneVisionVisible=1;
+
 red_circle_visible=1;
 green_circle_visible=1;
 green_sphere_visible=1;
@@ -158,6 +166,11 @@ function calcula() {
         )
     }
 
+
+    cone_tangent_data=[observer_pos, observer_u.multiplyByFloats(rch,rch,rch)];
+    cone_tangent_rad=rcr*1.01;
+
+
     //Base de vectores en el plano local (este, norte, arriba)
     eastV=new BABYLON.Vector3(-cos_observer_lat*sin_observer_lon,
                                0,
@@ -190,6 +203,7 @@ function calcula() {
 
     observer_dir=[observer_pos,obsDir,nan,zero,observer_pos];
 
+
     //Punto de corte entre el horizonte y el azimut del observador
     var cohx=observer_u.x*rch+rcr*(eastV.x*sin_az+northV.x*cos_az);
     var cohy=observer_u.y*rch+rcr*(eastV.y*sin_az+northV.y*cos_az);
@@ -217,6 +231,15 @@ function calcula() {
                                                   r*(pcohV.z*cos_ang+aux2.z*sin_ang)
         )
     }
+
+    //Cono de visión
+    var obsDirNorm=obsDir.subtract(observer_pos);
+    //obsDirNorm.normalize();
+    var dpcoh=BABYLON.Vector3.Distance(pcoh,observer_pos);
+
+    cone_vision_data=[observer_pos,obsDirNorm.multiplyByFloats(dpcoh,dpcoh,dpcoh).add(observer_pos)]
+    cone_vision_rad=dpcoh;
+
 }
 
 var createScene =  function () {
@@ -378,6 +401,31 @@ var createScene =  function () {
     astroHoriLine =BABYLON.MeshBuilder.CreateLines ( "astroHoriLine", {points: astro_hori_data},scene,true); 
     astroHoriLine.material=obsDirMat;
 
+    //Material del cono tangente a la esfera
+    coneTangentMat = new BABYLON.StandardMaterial("rsph", scene);
+    coneTangentMat.specularColor = new BABYLON.Color3(0, 0, 0);
+    coneTangentMat.diffuseColor=BABYLON.Color3.White();
+    coneTangentMat.emissiveColor = BABYLON.Color3.White();
+    coneTangentMat.alpha=0.25;
+    coneTangentMat.useLogarithmicDepth = true;
+
+    //Cono tangente a la esfera
+    cone_tangent = BABYLON.MeshBuilder.CreateTube(
+        "tangent_cone", {
+        path: cone_tangent_data, 
+        radiusFunction: radiusChange = (index, distance) => {
+            //const radius =  distance / 2;
+            var radius =0.0;
+            if (index==0) radius = 0.0;
+            if (index==1) radius = cone_tangent_rad;
+            return radius;}, 
+        sideOrientation: BABYLON.Mesh.DOUBLESIDE
+        }, 
+    scene);
+    cone_tangent.material=coneTangentMat;
+    cone_tangent.isVisible=coneTangentVisible;
+    cone_tangent.layerMask=0x00000001;
+
     camera.target=observer_pos.subtract(zero);
     
     //Opciones de la cámara del observador
@@ -395,6 +443,34 @@ var createScene =  function () {
     //Máscara de las cámaras
     camera.layerMask=0x00000001;
     observer_camera.layerMask=0x00000010;
+
+
+    //Material del cono de visión
+    coneVisionMat = new BABYLON.StandardMaterial("rsph", scene);
+    coneVisionMat.specularColor = new BABYLON.Color3(0, 0, 0);
+    coneVisionMat.diffuseColor=BABYLON.Color3.Yellow();
+    coneVisionMat.emissiveColor = BABYLON.Color3.Yellow();
+    coneVisionMat.alpha=0.25;
+    coneVisionMat.useLogarithmicDepth = true;
+
+    conc=0.5;
+    //Cono de vision
+    cone_vision = BABYLON.MeshBuilder.CreateTube(
+        "vision_cone", {
+        path: cone_vision_data, 
+        radiusFunction: radiusChange = (index, distance) => {
+            //const radius =  distance / 2;
+            var radius =0.0;
+            if (index==0) radius = 0.0;
+            if (index==1) radius = cone_vision_rad*Math.tan(observer_camera.fov*0.5);
+            return radius;}, 
+        sideOrientation: BABYLON.Mesh.DOUBLESIDE,
+        cap: 3
+        }, 
+    scene);
+    cone_vision.material=coneVisionMat;
+    cone_vision.isVisible=coneTangentVisible;
+    cone_vision.layerMask=0x00000001;
 
     redibuja();
 
@@ -815,6 +891,45 @@ var createScene =  function () {
         observer_camera.target=observer_dir[1].subtract(zero);
         observer_camera.upVector=(observer_pos.subtract(zero)).normalize();
         camera.target=observer_pos.subtract(zero);
+
+        //Actualización del cono tangente a la esfera
+        cone_tangent.dispose();
+        cone_tangent = BABYLON.MeshBuilder.CreateTube(
+            "tangent_cone", {
+            path: cone_tangent_data, 
+            radiusFunction: radiusChange = (index, distance) => {
+                //const radius =  distance / 2;
+                var radius =0.0;
+                if (index==0) radius = 0.0;
+                if (index==1) radius = cone_tangent_rad;
+                return radius;}, 
+            sideOrientation: BABYLON.Mesh.DOUBLESIDE
+            }, 
+        scene);
+        cone_tangent.material=coneTangentMat;
+        cone_tangent.isVisible=coneTangentVisible;
+        cone_tangent.layerMask=0x00000001;
+
+
+        //Cono de vision
+        cone_vision.dispose();
+        cone_vision = BABYLON.MeshBuilder.CreateTube(
+            "vision_cone", {
+            path: cone_vision_data, 
+            radiusFunction: radiusChange = (index, distance) => {
+                //const radius =  distance / 2;
+                var radius =0.0;
+                if (index==0) radius = 0.0;
+                if (index==1) radius = cone_vision_rad*Math.tan(observer_camera.fov*conc);
+                return radius;}, 
+            sideOrientation: BABYLON.Mesh.DOUBLESIDE,
+            cap: 3
+            }, 
+        scene);
+        cone_vision.material=coneVisionMat;
+        cone_vision.isVisible=coneTangentVisible;
+        cone_vision.layerMask=0x00000001;
+
        
 
     }
